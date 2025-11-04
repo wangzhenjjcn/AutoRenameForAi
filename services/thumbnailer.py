@@ -22,16 +22,22 @@ class _ThumbRunnable(QRunnable):
         self._emitter = emitter
 
     def run(self) -> None:
-        # 加载并缩放
-        reader = QImageReader(str(self._task.path))
-        img: QImage = reader.read()
-        if img.isNull():
+        try:
+            # 加载并缩放
+            reader = QImageReader(str(self._task.path))
+            reader.setAutoTransform(True)
+            img: QImage = reader.read()
+            if img.isNull():
+                return
+            max_w, max_h = self._task.size.width(), self._task.size.height()
+            # 使用位置参数，兼容不同 PySide6 版本的关键字
+            img = img.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            px = QPixmap.fromImage(img)
+            # 缓存检查在发射前由服务完成
+            self._emitter._on_worker_ready(self._task, px)
+        except Exception:
+            # 忽略单个缩略图失败，避免刷屏报错
             return
-        max_w, max_h = self._task.size.width(), self._task.size.height()
-        img = img.scaled(max_w, max_h, aspectMode=Qt.KeepAspectRatio, transformMode=Qt.SmoothTransformation)
-        px = QPixmap.fromImage(img)
-        # 缓存检查在发射前由服务完成
-        self._emitter._on_worker_ready(self._task, px)
 
 
 class ThumbnailerService(QObject):

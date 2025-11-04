@@ -55,6 +55,10 @@ class ImageGridView(QListWidget):
             result.append(p)
         return result
 
+    def pause_loading_for_rename(self) -> None:
+        # 取消未开始或正在排队的任务，减少占用导致的重命名失败
+        self._thumbnailer.cancel_pending()
+
     def _list_images(self, directory: Path) -> List[Path]:
         items = []
         try:

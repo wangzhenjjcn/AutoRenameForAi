@@ -228,6 +228,12 @@ class MainWindow(QMainWindow):
             return
 
         # 仅包含需要更名的映射
+        # 在执行前尽量停止缩略图读取，避免文件占用
+        try:
+            self.image_view.pause_loading_for_rename()
+        except Exception:
+            pass
+
         mappings: List[Tuple[Path, Path]] = [
             (old_p, new_p)
             for (old_p, new_p, status) in self._current_preview

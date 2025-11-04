@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Tuple
 import uuid
+import time
+import errno
 
 
 ILLEGAL_CHARS = set('/\\:*?"<>|')  # Windows 非法字符
@@ -89,7 +91,7 @@ def two_phase_rename(
     for old, new in mappings:
         try:
             temp = old.with_name(f"{old.stem}.__tmp__{uuid.uuid4().hex}{old.suffix}")
-            old.rename(temp)
+            _rename_with_retry(old, temp)
             temp_map[temp] = new
             tick()
         except Exception as e:
@@ -105,7 +107,7 @@ def two_phase_rename(
             # 再次检查目标是否被占用
             if target.exists():
                 raise OSError("目标已存在")
-            temp.rename(target)
+            _rename_with_retry(temp, target)
             results.append((target, target, True, None))
             tick()
         except Exception as e:
@@ -113,12 +115,39 @@ def two_phase_rename(
             origin = target.with_name(target.stem.split(".__tmp__")[0] + target.suffix)
             try:
                 if not origin.exists():
-                    temp.rename(origin)
+                    _rename_with_retry(temp, origin)
             except Exception:
                 pass
             results.append((origin, target, False, f"阶段B失败: {e}"))
             tick()
 
     return results
+
+
+def _rename_with_retry(src: Path, dst: Path, retries: int = 8, base_delay: float = 0.05) -> None:
+    """在 Windows 上对占用错误进行指数退避重试。"""
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            src.rename(dst)
+            return
+        except Exception as e:  # noqa: BLE001
+            last_exc = e
+            # 判定是否为可重试的临时性错误
+            winerr = getattr(e, "winerror", None)
+            err_no = getattr(e, "errno", None)
+            msg = str(e).lower()
+            transient = (
+                isinstance(e, PermissionError)
+                or winerr in (5, 32, 33)  # 5=拒绝访问, 32=正被另一进程使用, 33=进程无法访问文件
+                or err_no in (errno.EACCES, errno.EBUSY)
+                or ("used by another process" in msg or "being used" in msg)
+            )
+            if attempt < retries - 1 and transient:
+                time.sleep(base_delay * (2 ** attempt))
+                continue
+            raise
+    if last_exc:
+        raise last_exc
 
 
