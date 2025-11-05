@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QLabel,
     QAbstractItemView,
+    QComboBox,
 )
 
 from widgets.image_view import ImageGridView
@@ -92,6 +93,17 @@ class MainWindow(QMainWindow):
         self.path_display.setPlaceholderText("当前路径")
         self.prefix_edit = QLineEdit()
         self.prefix_edit.setPlaceholderText("输入前缀，例如 Trip_")
+        # 位数选择
+        self.width_combo = QComboBox()
+        self.width_combo.addItem("3位", 3)
+        self.width_combo.addItem("4位", 4)
+        self.width_combo.addItem("5位", 5)
+        self.width_combo.addItem("6位", 6)
+        self.width_combo.addItem("7位", 7)
+        self.width_combo.addItem("8位", 8)
+        self.width_combo.addItem("9位", 9)
+        self.width_combo.addItem("10位", 10)
+        self.width_combo.setCurrentIndex(1)  # 默认四位
         self.btn_preview = QPushButton("生成预览")
         self.btn_rename = QPushButton("执行重命名")
         self.btn_refresh = QPushButton("刷新")
@@ -103,6 +115,8 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addWidget(QLabel("前缀:"))
         toolbar.addWidget(self.prefix_edit)
+        toolbar.addWidget(QLabel("位数:"))
+        toolbar.addWidget(self.width_combo)
         toolbar.addWidget(self.btn_preview)
         toolbar.addWidget(self.btn_rename)
         toolbar.addWidget(self.btn_refresh)
@@ -176,6 +190,7 @@ class MainWindow(QMainWindow):
         self._has_conflict = False
         self.preview_table.setRowCount(0)
         self._update_buttons_state()
+        self._update_width_options()
 
     def _generate_preview(self) -> None:
         if not self._current_dir:
@@ -186,7 +201,13 @@ class MainWindow(QMainWindow):
         if not files:
             QMessageBox.information(self, "提示", "当前目录无图片文件")
             return
-        mappings = generate_preview_mappings(self._current_dir, files, prefix)
+        self._update_width_options()
+        mappings = generate_preview_mappings(
+            self._current_dir,
+            files,
+            prefix,
+            self._selected_width(),
+        )
         self._current_preview = [(m.old_path, m.new_path, m.status) for m in mappings]
         self._has_conflict = has_preview_conflicts(mappings)
         self._fill_preview_table(self._current_preview)
@@ -195,6 +216,34 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("预览包含冲突/非法名称，请修正前缀或文件名后再试", 5000)
         else:
             self.statusBar().showMessage("预览生成完成，可执行重命名", 3000)
+
+    def _selected_width(self) -> int:
+        data = self.width_combo.currentData()
+        try:
+            return int(data) if data is not None else 4
+        except Exception:
+            return 4
+
+    def _update_width_options(self) -> None:
+        # 根据图片数量动态禁用不够位数的选项：>999 禁用3位，>9999 禁用4位，以此类推
+        files = self.image_view.current_files()
+        total = len(files) if files else 0
+        required_digits = len(str(max(1, total)))
+        min_allowed = max(3, required_digits)
+        model = self.width_combo.model()
+        # 更新可用状态
+        for i in range(self.width_combo.count()):
+            digits = int(self.width_combo.itemData(i))
+            item = model.item(i)
+            if item is not None:
+                item.setEnabled(digits >= min_allowed)
+        # 如果当前选择低于允许的最小位数，自动提升到最近可选
+        current = self._selected_width()
+        if current < min_allowed:
+            for i in range(self.width_combo.count()):
+                if int(self.width_combo.itemData(i)) >= min_allowed:
+                    self.width_combo.setCurrentIndex(i)
+                    break
 
     def _fill_preview_table(self, rows: List[Tuple[Path, Path, str]]) -> None:
         self.preview_table.setRowCount(0)

@@ -22,6 +22,9 @@ class ImageGridView(QListWidget):
         self.setIconSize(icon_size)
         self.setSelectionMode(QListWidget.SingleSelection)
         self.setSpacing(8)
+        # 为首批加载设置透明占位，避免叠影与布局抖动
+        self._placeholder_icon = self._make_placeholder_icon(icon_size)
+        self._update_grid_metrics(icon_size)
 
         self._current_dir: Path | None = None
         self._path_to_item: Dict[Path, QListWidgetItem] = {}
@@ -30,6 +33,8 @@ class ImageGridView(QListWidget):
 
     def set_icon_size(self, size: QSize) -> None:
         self.setIconSize(size)
+        self._placeholder_icon = self._make_placeholder_icon(size)
+        self._update_grid_metrics(size)
 
     def load_directory(self, directory: Path) -> None:
         self._current_dir = directory
@@ -42,7 +47,7 @@ class ImageGridView(QListWidget):
             item = QListWidgetItem(QIcon(), p.name)
             item.setData(Qt.UserRole, str(p))
             # 占位空图标
-            item.setIcon(QIcon())
+            item.setIcon(self._placeholder_icon)
             self.addItem(item)
             self._path_to_item[p] = item
             self._thumbnailer.request_thumbnail(p, self.iconSize())
@@ -77,5 +82,20 @@ class ImageGridView(QListWidget):
         item = self._path_to_item.get(path)
         if item is not None:
             item.setIcon(QIcon(pixmap))
+            # 确保视图及时重算布局
+            self.viewport().update()
+
+    def _make_placeholder_icon(self, size: QSize) -> QIcon:
+        px = QPixmap(size)
+        px.fill(Qt.transparent)
+        return QIcon(px)
+
+    def _update_grid_metrics(self, icon_size: QSize) -> None:
+        # 为图标和两行文字预留空间，避免初始为空图标导致的项尺寸过小
+        fm = self.fontMetrics()
+        text_h = fm.height() * 2
+        w = max(64, icon_size.width() + 16)
+        h = max(64, icon_size.height() + text_h + 12)
+        self.setGridSize(QSize(w, h))
 
 

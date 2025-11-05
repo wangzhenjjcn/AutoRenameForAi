@@ -17,8 +17,11 @@ def natural_key(s: str) -> List[object]:
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
 
 
-def compute_number_width(total_images: int) -> int:
-    return max(3, len(str(max(1, total_images))))
+def compute_number_width(total_images: int, override: int | None = None) -> int:
+    required = len(str(max(1, total_images)))
+    if override is not None:
+        return max(override, required)
+    return max(3, required)
 
 
 def _has_illegal_chars(name: str) -> bool:
@@ -32,9 +35,14 @@ class PreviewRow:
     status: str  # "OK" | 错误说明
 
 
-def generate_preview_mappings(directory: Path, files: List[Path], prefix: str) -> List[PreviewRow]:
+def generate_preview_mappings(
+    directory: Path,
+    files: List[Path],
+    prefix: str,
+    width_override: int | None = None,
+) -> List[PreviewRow]:
     # files 已按文件名升序
-    width = compute_number_width(len(files))
+    width = compute_number_width(len(files), width_override)
     rows: List[PreviewRow] = []
     # 构建现有目标名集合（大小写不敏感的文件系统注意：Windows 默认不区分大小写）
     existing_lower = {p.name.lower() for p in directory.iterdir() if p.is_file()}
